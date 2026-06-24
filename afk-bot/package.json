@@ -1,0 +1,15 @@
+{
+  "name": "minecraft-bedrock-afk-bot",
+  "version": "1.0.0",
+  "description": "AFK Bot for Minecraft Bedrock Server - Keeps Aternos server online 24/7",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "bedrock-protocol": "^3.30.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -1,0 +1,14 @@
+services:
+  - type: worker
+    name: minecraft-afk-bot
+    env: node
+    buildCommand: npm install
+    startCommand: node bot.js
+    plan: free
+    envVars:
+      - key: SERVER_HOST
+        value: your-server.aternos.me   # <-- APNA ATERNOS IP YAHAN DALE
+      - key: SERVER_PORT
+        value: 19132                    # <-- APNA PORT YAHAN DALE
+      - key: BOT_NAME
+        value: AFKBot
