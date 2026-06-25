@@ -1,12 +1,8 @@
 const bedrock = require("bedrock-protocol");
 
-// ============================================================
-//  CONFIG - Render Environment Variables se aata hai
-// ============================================================
 const SERVER_HOST = process.env.SERVER_HOST || "dream_smp786.aternos.me";
 const SERVER_PORT = parseInt(process.env.SERVER_PORT) || 17512;
 const BOT_NAME    = process.env.BOT_NAME    || "AFKBot";
-// ============================================================
 
 const RECONNECT_DELAY_MS = 20 * 1000;
 const MOVE_INTERVAL_MS   = 20 * 1000;
@@ -34,11 +30,8 @@ function startMoving() {
       client.queue("move_player", {
         runtime_id: 1n,
         position: { x: 0, y: 64, z: 0 },
-        pitch: 0,
-        yaw: yaw,
-        head_yaw: yaw,
-        mode: 0,
-        on_ground: true,
+        pitch: 0, yaw: yaw, head_yaw: yaw,
+        mode: 0, on_ground: true,
         ridden_runtime_id: 0n,
         cause: { type: 0, entity_id: 0n },
         tick: 0n,
@@ -50,8 +43,7 @@ function startMoving() {
     if (!client || !isConnected) return;
     try {
       client.queue("player_action", {
-        runtime_id: 1n,
-        action: 2,
+        runtime_id: 1n, action: 2,
         position: { x: 0, y: 64, z: 0 },
         result_position: { x: 0, y: 64, z: 0 },
         face: 0,
@@ -64,7 +56,6 @@ function connect() {
   clearTimers();
   isConnected = false;
   attemptNo++;
-
   console.log(`\n[BOT] Attempt #${attemptNo} - ${SERVER_HOST}:${SERVER_PORT}`);
 
   try {
@@ -72,7 +63,7 @@ function connect() {
       host:           SERVER_HOST,
       port:           SERVER_PORT,
       username:       BOT_NAME,
-      offline:        false,        // Microsoft auth use karega
+      offline:        true,       // Online Mode OFF hone ke baad yeh kaam karega
       version:        "1.21.90",
       skipPing:       true,
       connectTimeout: 30000,
@@ -83,19 +74,6 @@ function connect() {
     return;
   }
 
-  // Yeh event tab fire hota hai jab Microsoft login URL generate ho
-  client.on("microsoft_auth_flow", ({ link }) => {
-    console.log("\n" + "=".repeat(60));
-    console.log("🔐 MICROSOFT LOGIN REQUIRED!");
-    console.log("=".repeat(60));
-    console.log("Browser mein yeh link kholo:");
-    console.log(link);
-    console.log("=".repeat(60));
-    console.log("Upar wala link kholo, Microsoft account se login karo");
-    console.log("Token automatically save ho jayega");
-    console.log("=".repeat(60) + "\n");
-  });
-
   client.on("join", () => {
     isConnected = true;
     console.log(`\n✅ [BOT] Server join kar liya! (attempt #${attemptNo})`);
@@ -103,9 +81,7 @@ function connect() {
   });
 
   client.on("text", (packet) => {
-    if (packet.source_name) {
-      console.log(`[CHAT] ${packet.source_name}: ${packet.message}`);
-    }
+    if (packet.source_name) console.log(`[CHAT] ${packet.source_name}: ${packet.message}`);
   });
 
   client.on("disconnect", (packet) => {
@@ -148,8 +124,8 @@ process.on("unhandledRejection", (reason) => {
 });
 
 console.log("=".repeat(50));
-console.log(" Minecraft Bedrock AFK Bot v2.0");
-console.log(" Microsoft Auth Mode");
+console.log(" Minecraft Bedrock AFK Bot v3.0");
+console.log(" Offline Mode - Online Mode OFF required");
 console.log("=".repeat(50));
 
 connect();
