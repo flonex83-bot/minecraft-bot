@@ -90,13 +90,15 @@ function connect() {
 
   try {
     client = bedrock.createClient({
-      host:            SERVER_HOST,
-      port:            SERVER_PORT,
-      username:        BOT_NAME,
-      offline:         true,          // offline mode (Aternos free = no Xbox auth needed usually)
-      version:         "1.21.90",     // Bedrock 1.21.90
-      skipPing:        false,
-      connectTimeout:  30000,
+      host:             SERVER_HOST,
+      port:             SERVER_PORT,
+      username:         BOT_NAME,
+      offline:          true,         // Xbox auth nahi chahiye - Aternos Online Mode OFF hona chahiye
+      authTitle:        undefined,    // auth bypass
+      deviceOS:         8,            // Windows 10 = 7, Switch = 8
+      version:          "1.21.90",
+      skipPing:         true,         // ping skip karo version mismatch se bachne ke liye
+      connectTimeout:   30000,
     });
   } catch (err) {
     console.error("[BOT] Client banane mein error:", err.message);
