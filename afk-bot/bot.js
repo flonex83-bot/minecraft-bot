@@ -1,16 +1,16 @@
 const bedrock = require("bedrock-protocol");
 
 // ============================================================
-//  APNA SERVER IP AUR PORT YAHAN DALE (Aternos wala)
+//  CONFIG - Render Environment Variables se aata hai
 // ============================================================
 const SERVER_HOST = process.env.SERVER_HOST || "dream_smp786.aternos.me";
 const SERVER_PORT = parseInt(process.env.SERVER_PORT) || 17512;
 const BOT_NAME    = process.env.BOT_NAME    || "AFKBot";
 // ============================================================
 
-const RECONNECT_DELAY_MS = 15 * 1000;   // 15 seconds baad reconnect
-const MOVE_INTERVAL_MS   = 30 * 1000;   // 30 seconds mein ek baar move
-const JUMP_INTERVAL_MS   = 60 * 1000;   // 60 seconds mein ek baar jump
+const RECONNECT_DELAY_MS = 20 * 1000;
+const MOVE_INTERVAL_MS   = 20 * 1000;
+const JUMP_INTERVAL_MS   = 45 * 1000;
 
 let client      = null;
 let moveTimer   = null;
@@ -19,115 +19,102 @@ let reconnTimer = null;
 let isConnected = false;
 let attemptNo   = 0;
 
-// ─────────────────────────────────────────────
-//  Cleanup: timers band karo
-// ─────────────────────────────────────────────
 function clearTimers() {
-  if (moveTimer)   { clearInterval(moveTimer);   moveTimer   = null; }
-  if (jumpTimer)   { clearInterval(jumpTimer);   jumpTimer   = null; }
-  if (reconnTimer) { clearTimeout(reconnTimer);  reconnTimer = null; }
+  if (moveTimer)   { clearInterval(moveTimer);  moveTimer   = null; }
+  if (jumpTimer)   { clearInterval(jumpTimer);  jumpTimer   = null; }
+  if (reconnTimer) { clearTimeout(reconnTimer); reconnTimer = null; }
 }
 
-// ─────────────────────────────────────────────
-//  Movement packets bhejo taake kick na ho
-// ─────────────────────────────────────────────
 function startMoving() {
   let yaw = 0;
-
   moveTimer = setInterval(() => {
     if (!client || !isConnected) return;
-
-    yaw = (yaw + 45) % 360; // har baar 45° rotate
-
+    yaw = (yaw + 45) % 360;
     try {
       client.queue("move_player", {
-        runtime_id:    1n,
-        position:      { x: 0, y: 64, z: 0 },
-        pitch:         0,
-        yaw:           yaw,
-        head_yaw:      yaw,
-        mode:          0,
-        on_ground:     true,
+        runtime_id: 1n,
+        position: { x: 0, y: 64, z: 0 },
+        pitch: 0,
+        yaw: yaw,
+        head_yaw: yaw,
+        mode: 0,
+        on_ground: true,
         ridden_runtime_id: 0n,
-        cause:         { type: 0, entity_id: 0n },
-        tick:          0n,
+        cause: { type: 0, entity_id: 0n },
+        tick: 0n,
       });
-      console.log(`[MOVE] Rotation: ${yaw}°`);
-    } catch (e) {
-      // Packet fail ho toh ignore karo
-    }
+    } catch (e) {}
   }, MOVE_INTERVAL_MS);
 
   jumpTimer = setInterval(() => {
     if (!client || !isConnected) return;
     try {
-      // Player Action: jump (action_id = 2 = jump)
       client.queue("player_action", {
         runtime_id: 1n,
-        action:     2,
-        position:   { x: 0, y: 64, z: 0 },
+        action: 2,
+        position: { x: 0, y: 64, z: 0 },
         result_position: { x: 0, y: 64, z: 0 },
-        face:       0,
+        face: 0,
       });
-      console.log("[JUMP] Bot ne jump kiya");
-    } catch (e) {
-      // ignore
-    }
+    } catch (e) {}
   }, JUMP_INTERVAL_MS);
 }
 
-// ─────────────────────────────────────────────
-//  Server se connect karo
-// ─────────────────────────────────────────────
 function connect() {
   clearTimers();
   isConnected = false;
   attemptNo++;
 
-  console.log(`\n[BOT] Connection attempt #${attemptNo}`);
-  console.log(`[BOT] Server: ${SERVER_HOST}:${SERVER_PORT}`);
-  console.log(`[BOT] Username: ${BOT_NAME}`);
+  console.log(`\n[BOT] Attempt #${attemptNo} - ${SERVER_HOST}:${SERVER_PORT}`);
 
   try {
     client = bedrock.createClient({
-      host:             SERVER_HOST,
-      port:             SERVER_PORT,
-      username:         BOT_NAME,
-      offline:          true,         // Xbox auth nahi chahiye - Aternos Online Mode OFF hona chahiye
-      authTitle:        undefined,    // auth bypass
-      deviceOS:         8,            // Windows 10 = 7, Switch = 8
-      version:          "1.21.90",
-      skipPing:         true,         // ping skip karo version mismatch se bachne ke liye
-      connectTimeout:   30000,
+      host:           SERVER_HOST,
+      port:           SERVER_PORT,
+      username:       BOT_NAME,
+      offline:        false,        // Microsoft auth use karega
+      version:        "1.21.90",
+      skipPing:       true,
+      connectTimeout: 30000,
     });
   } catch (err) {
-    console.error("[BOT] Client banane mein error:", err.message);
+    console.error("[BOT] Error:", err.message);
     scheduleReconnect();
     return;
   }
 
-  // ── Connected ──────────────────────────────
+  // Yeh event tab fire hota hai jab Microsoft login URL generate ho
+  client.on("microsoft_auth_flow", ({ link }) => {
+    console.log("\n" + "=".repeat(60));
+    console.log("🔐 MICROSOFT LOGIN REQUIRED!");
+    console.log("=".repeat(60));
+    console.log("Browser mein yeh link kholo:");
+    console.log(link);
+    console.log("=".repeat(60));
+    console.log("Upar wala link kholo, Microsoft account se login karo");
+    console.log("Token automatically save ho jayega");
+    console.log("=".repeat(60) + "\n");
+  });
+
   client.on("join", () => {
     isConnected = true;
     console.log(`\n✅ [BOT] Server join kar liya! (attempt #${attemptNo})`);
     startMoving();
   });
 
-  // ── Text/chat messages ─────────────────────
   client.on("text", (packet) => {
-    console.log(`[CHAT] ${packet.source_name}: ${packet.message}`);
+    if (packet.source_name) {
+      console.log(`[CHAT] ${packet.source_name}: ${packet.message}`);
+    }
   });
 
-  // ── Disconnect ─────────────────────────────
   client.on("disconnect", (packet) => {
     isConnected = false;
-    const reason = packet?.message || "Unknown reason";
-    console.warn(`\n⚠️  [BOT] Disconnect hua: ${reason}`);
+    console.warn(`\n⚠️  [BOT] Disconnect: ${packet?.message || "unknown"}`);
     clearTimers();
     scheduleReconnect();
   });
 
-  // ── Error ──────────────────────────────────
   client.on("error", (err) => {
     isConnected = false;
     console.error(`\n❌ [BOT] Error: ${err.message}`);
@@ -135,48 +122,34 @@ function connect() {
     scheduleReconnect();
   });
 
-  // ── Close ──────────────────────────────────
   client.on("close", () => {
     if (isConnected) {
       isConnected = false;
-      console.warn("\n🔌 [BOT] Connection close ho gayi");
       clearTimers();
       scheduleReconnect();
     }
   });
 }
 
-// ─────────────────────────────────────────────
-//  Reconnect schedule karo
-// ─────────────────────────────────────────────
 function scheduleReconnect() {
-  if (reconnTimer) return; // pehle se scheduled hai
-  console.log(`[BOT] ${RECONNECT_DELAY_MS / 1000} seconds baad reconnect hoga...`);
-  reconnTimer = setTimeout(() => {
-    reconnTimer = null;
-    connect();
-  }, RECONNECT_DELAY_MS);
+  if (reconnTimer) return;
+  console.log(`[BOT] ${RECONNECT_DELAY_MS / 1000}s baad reconnect...`);
+  reconnTimer = setTimeout(() => { reconnTimer = null; connect(); }, RECONNECT_DELAY_MS);
 }
 
-// ─────────────────────────────────────────────
-//  Process crash se bachao
-// ─────────────────────────────────────────────
 process.on("uncaughtException", (err) => {
-  console.error("[CRASH] Uncaught Exception:", err.message);
+  console.error("[CRASH]", err.message);
   clearTimers();
   scheduleReconnect();
 });
 
 process.on("unhandledRejection", (reason) => {
-  console.error("[CRASH] Unhandled Rejection:", reason);
+  console.error("[REJECT]", reason);
 });
 
-// ─────────────────────────────────────────────
-//  START
-// ─────────────────────────────────────────────
 console.log("=".repeat(50));
-console.log(" Minecraft Bedrock AFK Bot - v1.0");
-console.log(" Aternos Server 24/7 Online Rakhne Ke Liye");
+console.log(" Minecraft Bedrock AFK Bot v2.0");
+console.log(" Microsoft Auth Mode");
 console.log("=".repeat(50));
 
 connect();
