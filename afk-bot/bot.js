@@ -1,5 +1,6 @@
 const bedrock = require("bedrock-protocol");
-const http = require("http");
+const http    = require("http");
+const dns     = require("dns").promises;
 
 const SERVER_HOST = process.env.SERVER_HOST || "dream_smp786.aternos.me";
 const SERVER_PORT = parseInt(process.env.SERVER_PORT) || 17512;
@@ -12,6 +13,7 @@ let client      = null;
 let moveTimer   = null;
 let jumpTimer   = null;
 let pingTimer   = null;
+let reconnTimer = null;
 
 // ── HTTP keep-alive ─────────────────────────────────────────
 http.createServer((req, res) => {
@@ -21,18 +23,18 @@ http.createServer((req, res) => {
 
 // ── Timers ──────────────────────────────────────────────────
 function clearTimers() {
-  if (moveTimer) { clearInterval(moveTimer); moveTimer = null; }
-  if (jumpTimer) { clearInterval(jumpTimer); jumpTimer = null; }
-  if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
+  if (moveTimer)   { clearInterval(moveTimer);  moveTimer   = null; }
+  if (jumpTimer)   { clearInterval(jumpTimer);  jumpTimer   = null; }
+  if (pingTimer)   { clearInterval(pingTimer);  pingTimer   = null; }
+  if (reconnTimer) { clearTimeout(reconnTimer); reconnTimer = null; }
 }
 
-// ── Movement - natural aur slow ─────────────────────────────
+// ── Natural Movement ────────────────────────────────────────
 function startMovement() {
   let yaw  = Math.random() * 360;
   let posX = 0, posY = 64, posZ = 0;
   let tick = 0n;
 
-  // Har 12 sec mein thoda move
   moveTimer = setInterval(() => {
     if (!client || !isConnected) return;
     tick += 1n;
@@ -41,36 +43,30 @@ function startMovement() {
     yaw   = (yaw + (Math.random() - 0.5) * 5 + 360) % 360;
     try {
       client.queue("move_player", {
-        runtime_id:        1n,
-        position:          { x: posX, y: posY, z: posZ },
-        pitch:             0,
-        yaw:               yaw,
-        head_yaw:          yaw,
-        mode:              0,
-        on_ground:         true,
+        runtime_id: 1n,
+        position: { x: posX, y: posY, z: posZ },
+        pitch: 0, yaw, head_yaw: yaw,
+        mode: 0, on_ground: true,
         ridden_runtime_id: 0n,
-        cause:             { type: 0, entity_id: 0n },
-        tick:              tick,
+        cause: { type: 0, entity_id: 0n },
+        tick,
       });
     } catch (_) {}
   }, 12000);
 
-  // Har 40 sec mein jump
   jumpTimer = setInterval(() => {
     if (!client || !isConnected) return;
     try {
       client.queue("player_action", {
-        runtime_id:      1n,
-        action:          2,
-        position:        { x: 0, y: 64, z: 0 },
+        runtime_id: 1n, action: 2,
+        position: { x: 0, y: 64, z: 0 },
         result_position: { x: 0, y: 64, z: 0 },
-        face:            0,
+        face: 0,
       });
       console.log("[BOT] Jump");
     } catch (_) {}
   }, 40000);
 
-  // Har 3 sec mein tick_sync - connection zinda rakhta hai
   pingTimer = setInterval(() => {
     if (!client || !isConnected) return;
     try {
@@ -81,92 +77,115 @@ function startMovement() {
     } catch (_) {}
   }, 3000);
 
-  console.log("[BOT] Movement + ping started");
+  console.log("[BOT] Movement started");
 }
 
-// ── CONNECT - sirf ek baar, reconnect nahi ──────────────────
-function connect() {
+// ── Aternos ka real port dhundho SRV record se ─────────────
+async function getRealPort() {
+  try {
+    const records = await dns.resolveSrv(`_minecraft._udp.${SERVER_HOST}`);
+    if (records && records.length > 0) {
+      console.log(`[DNS] SRV port mila: ${records[0].port}`);
+      return records[0].port;
+    }
+  } catch (_) {}
+
+  // SRV na mile toh ping se port lo
+  try {
+    const ping = await bedrock.ping({ host: SERVER_HOST, port: SERVER_PORT });
+    console.log(`[PING] Server online, port: ${SERVER_PORT}`);
+    return SERVER_PORT;
+  } catch (e) {
+    console.log(`[PING] Ping failed: ${e.message}`);
+    return SERVER_PORT; // default use karo
+  }
+}
+
+// ── CONNECT ─────────────────────────────────────────────────
+async function connect() {
   clearTimers();
   isConnected = false;
   attemptNo++;
-  console.log(`[BOT] Attempt #${attemptNo} → ${SERVER_HOST}:${SERVER_PORT}`);
+  console.log(`\n[BOT] Attempt #${attemptNo} → ${SERVER_HOST}`);
+
+  // Har baar fresh port lo
+  const port = await getRealPort();
+  console.log(`[BOT] Connecting on port: ${port}`);
 
   try {
     client = bedrock.createClient({
-      host:              SERVER_HOST,
-      port:              SERVER_PORT,
-      username:          BOT_NAME,
-      offline:           true,
-      version:           "1.21.90",
-      skipPing:          true,   // Aternos ka port scan nahi karega
-      connectTimeout:    30000,
+      host:           SERVER_HOST,
+      port:           port,
+      username:       BOT_NAME,
+      offline:        true,
+      version:        "1.21.90",
+      skipPing:       true,
+      connectTimeout: 25000,
     });
   } catch (err) {
     console.error("[BOT] Create error:", err.message);
-    setTimeout(connect, 5000);
+    scheduleReconnect(5000);
     return;
   }
 
   client.on("join", () => {
     isConnected = true;
-    console.log(`\n✅✅✅ [BOT] JOINED! Attempt #${attemptNo} ✅✅✅\n`);
-    // 2 sec baad movement shuru
+    console.log(`\n✅✅✅ [BOT] JOINED! ✅✅✅\n`);
     setTimeout(() => { if (isConnected) startMovement(); }, 2000);
   });
 
-  client.on("spawn", () => {
-    console.log("[BOT] World mein spawn hua");
-  });
+  client.on("spawn", () => console.log("[BOT] Spawned!"));
 
   client.on("text", (p) => {
     if (p.source_name) console.log(`[CHAT] ${p.source_name}: ${p.message}`);
   });
 
-  // ── DISCONNECT handler ──────────────────────────────────
   client.on("disconnect", (p) => {
     isConnected = false;
-    const reason = p?.message || "no reason";
-    console.warn(`\n⚠️  [BOT] Disconnect: ${reason}`);
+    const reason = p?.message || "unknown";
+    console.warn(`⚠️  Disconnect: ${reason}`);
     clearTimers();
 
-    // Reason ke mutabiq wait karo
-    let delay = 5000;
-    if (reason.includes("notAuthenticated")) {
-      console.error("❌ Aternos mein Cracked ON karo! Options > Cracked > Enable");
-      delay = 15000;
-    } else if (reason.includes("serverFull")) {
-      delay = 20000;
-    } else if (reason.includes("outdated") || reason.includes("version")) {
-      console.error("❌ Version mismatch!");
-      delay = 10000;
+    // Version error - supported versions nikal lo
+    if (reason.includes("Outdated") || reason.includes("version")) {
+      const match = reason.match(/(\d+\.\d+(?:\.\d+)?)\s*$/);
+      if (match) console.log(`[BOT] Server version hint: ${match[1]}`);
+      scheduleReconnect(8000);
+    } else if (reason.includes("notAuthenticated")) {
+      console.error("❌ Aternos Options > Cracked ON karo!");
+      scheduleReconnect(12000);
+    } else {
+      scheduleReconnect(5000);
     }
-
-    console.log(`[BOT] ${delay/1000}s baad reconnect...`);
-    setTimeout(connect, delay);
   });
 
   client.on("error", (err) => {
     isConnected = false;
-    console.error(`❌ [BOT] Error: ${err.message}`);
+    console.error(`❌ Error: ${err.message}`);
     clearTimers();
-    setTimeout(connect, 5000);
+    scheduleReconnect(5000);
   });
 
   client.on("close", () => {
     if (isConnected) {
       isConnected = false;
-      console.warn("🔌 [BOT] Connection closed");
       clearTimers();
-      setTimeout(connect, 5000);
+      scheduleReconnect(5000);
     }
   });
 }
 
-process.on("uncaughtException",  (e) => { console.error("[CRASH]",  e.message); clearTimers(); setTimeout(connect, 5000); });
-process.on("unhandledRejection", (r) => { console.error("[REJECT]", r); });
+function scheduleReconnect(delay = 5000) {
+  if (reconnTimer) return;
+  console.log(`[BOT] ${delay/1000}s baad reconnect...`);
+  reconnTimer = setTimeout(() => { reconnTimer = null; connect(); }, delay);
+}
+
+process.on("uncaughtException",  (e) => { console.error("[CRASH]",  e.message); clearTimers(); scheduleReconnect(5000); });
+process.on("unhandledRejection", (r) => console.error("[REJECT]", r));
 
 console.log("=".repeat(50));
-console.log(` AFK Bot v8.0 - Stable Connection`);
+console.log(` AFK Bot v9.0 - Dynamic Port + 1.21.90`);
 console.log(`  ${SERVER_HOST}:${SERVER_PORT}`);
 console.log("=".repeat(50));
 connect();
